@@ -11,7 +11,8 @@ import { AccountModelsTab } from './AccountModelsTab';
 
 const mockAuthState = vi.hoisted(() => ({ serverVersion: 'v8.0.13' }));
 vi.mock('@/stores/useAuthStore', () => ({
-  useAuthStore: (selector: (state: { serverVersion: string }) => unknown) => selector(mockAuthState),
+  useAuthStore: (selector: (state: { serverVersion: string }) => unknown) =>
+    selector(mockAuthState),
 }));
 beforeEach(() => {
   mockAuthState.serverVersion = 'v8.0.13';
@@ -217,7 +218,6 @@ describe('AccountModelsTab', () => {
     );
   });
 
-
   it('shows credential exclusions taking precedence over global rules on CPA v8.0.40', () => {
     mockAuthState.serverVersion = 'v8.0.40';
     const { renderer } = renderTab({
@@ -227,6 +227,9 @@ describe('AccountModelsTab', () => {
     });
     expect(findModelRow(renderer, 'gpt-5.6-terra').props['data-model-scope']).toBe('available');
     expect(findModelRow(renderer, 'gpt-6-luna').props['data-model-scope']).toBe('credential');
+    expect(readText(findModelRow(renderer, 'gpt-5.6-terra'))).not.toContain(
+      'accounts.model_rule_count_global'
+    );
     act(() => {
       renderer.root.findByProps({ id: 'account-model-filter-disabled' }).props.onClick({
         preventDefault: vi.fn(),
@@ -284,6 +287,7 @@ describe('AccountModelsTab', () => {
       models: [{ id: 'gpt-5.6-terra' }, { id: 'gpt-6-luna' }],
       globalExcluded: { codex: ['gpt-5.6-terra'] },
     });
+    expect(readText(renderer.toJSON())).toContain('accounts.model_precedence_unknown:count=1');
     expect(findModelRow(renderer, 'gpt-5.6-terra').props['data-model-scope']).toBe('unknown');
     const action = findButtonByText(
       findModelRow(renderer, 'gpt-6-luna'),
@@ -291,6 +295,53 @@ describe('AccountModelsTab', () => {
     );
     expect(action.props.disabled).toBe(true);
   });
+
+  it('routes a restore that would empty the credential list to global rules', () => {
+    mockAuthState.serverVersion = 'v8.0.40';
+    const onManageGlobalRules = vi.fn();
+    const editor = makeEditor({
+      rules: 'gpt-5.5\nhaochi/gpt-5.5',
+      originalRules: 'gpt-5.5\nhaochi/gpt-5.5',
+      originalPrefix: 'haochi',
+      prefix: 'haochi',
+    });
+    const { renderer } = renderTab({
+      editor,
+      models: [{ id: 'haochi/gpt-5.5' }],
+      modelDefinitions: [{ id: 'gpt-5.5' }],
+      globalExcluded: { codex: ['gpt-5.5'] },
+      onManageGlobalRules,
+    });
+    const modelRow = findModelRow(renderer, 'haochi/gpt-5.5');
+    expect(readText(modelRow)).not.toContain('accounts.model_restore_for_credential');
+    act(() => {
+      findButtonByText(modelRow, 'accounts.model_manage_global_rules').props.onClick();
+    });
+    expect(onManageGlobalRules).toHaveBeenCalledTimes(1);
+    expect(editor.updateField).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['v8.0.40', '', 'gpt-5.6-terra\ngpt-6-luna', 'accounts.model_change_stops_inheriting_global'],
+    ['v8.0.40', 'gpt-6-luna', '', 'accounts.model_change_resumes_inheriting_global'],
+    ['v8.0.13', '', 'gpt-6-luna', null],
+  ] as const)(
+    'explains global inheritance changes on CPA %s (%j -> %j)',
+    (serverVersion, originalRules, rules, note) => {
+      mockAuthState.serverVersion = serverVersion;
+      const { renderer } = renderTab({
+        editor: makeEditor({ originalRules, rules, dirty: true, canSave: true }),
+        models: [{ id: 'gpt-5.6-terra' }, { id: 'gpt-6-luna' }],
+        globalExcluded: { codex: ['gpt-5.6-terra'] },
+      });
+      const text = readText(renderer.toJSON());
+      if (note) {
+        expect(text).toContain(`${note}:count=1`);
+      } else {
+        expect(text).not.toContain('inheriting_global');
+      }
+    }
+  );
 
   it('distinguishes available, credential, global, and combined exclusions', () => {
     const editor = makeEditor({ rules: 'credential-model\nboth-model' });

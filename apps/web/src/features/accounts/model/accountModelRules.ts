@@ -7,21 +7,41 @@ import {
 
 export type AccountModelExclusionPriority = 'merge' | 'override' | 'unknown';
 
-// Verified official CPA releases: v7.3.4–v8.0.32 merge OAuth exclusions;
-// v8.0.33+ gives nonempty credential exclusions priority over global exclusions.
-// Unrecognized/dev builds must not be assumed to use either behavior.
+// Official CPA releases merge credential and global OAuth exclusions from v6.10.8
+// through v8.0.32; v8.0.33+ gives nonempty credential exclusions priority over global
+// exclusions, and an empty credential list inherits them. Custom builds stay unknown.
+const CPA_RELEASE_VERSION_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)$/i;
+const CPA_GIT_DESCRIBE_VERSION_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)-(\d+)-g([0-9a-f]+)(?:-dirty)?$/i;
+// The CPAMP demo reports `<release>-demo` and emulates that release.
+const CPAMP_DEMO_VERSION_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)-demo$/i;
+const FIRST_VERIFIED_MERGE_VERSION = [6, 10, 8] as const;
+const LAST_MERGE_VERSION = [8, 0, 32] as const;
+
+const compareVersion = (current: readonly number[], baseline: readonly number[]) => {
+  for (let index = 0; index < baseline.length; index += 1) {
+    const difference = current[index] - baseline[index];
+    if (difference !== 0) return difference;
+  }
+  return 0;
+};
+
 export const getAccountModelExclusionPriority = (
   serverVersion?: string | null
 ): AccountModelExclusionPriority => {
-  const match = serverVersion?.trim().match(/^v?(\d+)\.(\d+)\.(\d+)$/i);
+  const normalizedVersion = serverVersion?.trim() ?? '';
+  const describeMatch = normalizedVersion.match(CPA_GIT_DESCRIBE_VERSION_PATTERN);
+  const match =
+    describeMatch ??
+    normalizedVersion.match(CPA_RELEASE_VERSION_PATTERN) ??
+    normalizedVersion.match(CPAMP_DEMO_VERSION_PATTERN);
   if (!match) return 'unknown';
-  const [, majorText, minorText, patchText] = match;
-  const major = Number(majorText);
-  const minor = Number(minorText);
-  const patch = Number(patchText);
-  if (major === 7 && minor === 3 && patch >= 4) return 'merge';
-  if (major === 8 && minor === 0) return patch >= 33 ? 'override' : 'merge';
-  return 'unknown';
+  const version = match.slice(1, 4).map((segment) => Number.parseInt(segment, 10));
+  if (compareVersion(version, FIRST_VERIFIED_MERGE_VERSION) < 0) return 'unknown';
+  const comparison = compareVersion(version, LAST_MERGE_VERSION);
+  if (comparison > 0) return 'override';
+  if (comparison < 0) return 'merge';
+  // Commits after the v8.0.32 tag may or may not include the precedence change.
+  return describeMatch ? 'unknown' : 'merge';
 };
 
 export type AccountModelRuleScope =
@@ -305,12 +325,12 @@ export const buildAccountModelRuleProjection = ({
     }
 
     const credentialPatterns = findMatchingRules(identity.ruleModelId, normalizedCredentialRules);
-    const globalPatterns = findMatchingRules(identity.ruleModelId, normalizedGlobalRules);
+    // Global patterns overridden by a nonempty credential list are not shown as effective.
+    const globalPatterns = findMatchingRules(identity.ruleModelId, effectiveGlobalRules);
     const credentialExcluded = credentialPatterns.length > 0;
-    const globalExcluded = globalPatterns.length > 0;
-    const globalApplies = globalExcluded && !credentialOverridesGlobal;
+    const globalApplies = globalPatterns.length > 0;
     const globalEffectUnknown =
-      exclusionPriority === 'unknown' && normalizedCredentialRules.length > 0 && globalExcluded;
+      exclusionPriority === 'unknown' && normalizedCredentialRules.length > 0 && globalApplies;
     const scope: AccountModelRuleScope = credentialExcluded
       ? credentialRulesShared
         ? globalApplies && !globalEffectUnknown
@@ -388,7 +408,6 @@ export const setAccountModelExactRule = (
 
   return Array.from(next).sort((left, right) => left.localeCompare(right));
 };
-
 
 // Apply one exact-model change without silently dropping inherited global exclusions.
 // An empty credential list cannot override a nonempty global list in official CPA.

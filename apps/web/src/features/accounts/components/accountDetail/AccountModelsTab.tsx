@@ -10,7 +10,6 @@ import {
   buildAccountModelRuleDiff,
   buildAccountModelRuleProjection,
   getAccountModelExclusionPriority,
-  matchesAccountModelRule,
   setEffectiveAccountModelExactRule,
   type AccountModelRuleRow,
   type AccountModelRuleScope,
@@ -179,6 +178,18 @@ export function AccountModelsTab({
     [draft?.excludedModelsText, state?.originalDraft?.excludedModelsText]
   );
   const modelRulesDirty = diff.added.length > 0 || diff.removed.length > 0;
+  // Override-capable CPA: a nonempty credential list replaces global rules; empty inherits them.
+  const originalCredentialRuleCount = diff.removed.length + diff.unchanged.length;
+  const globalInheritanceChange =
+    exclusionPriority === 'override' && projection.globalRules.length > 0
+      ? originalCredentialRuleCount === 0 && credentialRules.length > 0
+        ? 'stops'
+        : originalCredentialRuleCount > 0 && credentialRules.length === 0
+          ? 'resumes'
+          : null
+      : null;
+  const precedenceUnknown =
+    globalRulesKnown && exclusionPriority === 'unknown' && projection.globalRules.length > 0;
   const hasUnresolvedRows = useMemo(
     () => projection.rows.some((row) => !row.ruleModelIdResolved),
     [projection.rows]
@@ -219,7 +230,7 @@ export function AccountModelsTab({
     row.runtimeOnly ||
     sharedSourceReadOnly ||
     !globalRulesKnown ||
-    (exclusionPriority === 'unknown' && projection.globalRules.length > 0) ||
+    precedenceUnknown ||
     state?.saving === true ||
     !editorReady;
   const disabledCount = projection.rows.filter((model) => isKnownDisabledScope(model.scope)).length;
@@ -258,12 +269,16 @@ export function AccountModelsTab({
       );
     }
     if (model.hasCredentialExactRule) {
-      // Removing the last credential rule cannot unblock a model still excluded globally.
-      if (
-        exclusionPriority === 'override' &&
-        credentialRules.length === 1 &&
-        projection.globalRules.some((rule) => matchesAccountModelRule(model.ruleModelId, rule))
-      ) {
+      // An emptied credential list would inherit a global rule that still excludes this model.
+      const restoredRules = setEffectiveAccountModelExactRule({
+        credentialRules,
+        globalRules: projection.globalRules,
+        exclusionPriority,
+        modelId: model.ruleModelId,
+        excluded: false,
+        equivalentExactModelIds: model.equivalentRuntimeModelIds,
+      });
+      if (restoredRules === null) {
         return (
           <Button variant="secondary" size="xs" onClick={onManageGlobalRules}>
             {t('accounts.model_manage_global_rules')}
@@ -272,8 +287,7 @@ export function AccountModelsTab({
       }
       const remainsExcluded =
         model.hasCredentialWildcardRule ||
-        (model.globalPatterns.length > 0 &&
-          (exclusionPriority !== 'override' || credentialRules.length === 1)) ||
+        (exclusionPriority !== 'override' && model.globalPatterns.length > 0) ||
         !globalRulesKnown;
       return (
         <Button
@@ -305,10 +319,7 @@ export function AccountModelsTab({
         </Button>
       );
     }
-    if (
-      model.globalPatterns.length > 0 &&
-      (exclusionPriority !== 'override' || credentialRules.length === 0)
-    ) {
+    if (model.globalPatterns.length > 0) {
       return (
         <Button variant="secondary" size="xs" onClick={onManageGlobalRules}>
           {t('accounts.model_manage_global_rules')}
@@ -431,6 +442,23 @@ export function AccountModelsTab({
       {hasUnresolvedRows && !modelDefinitionsLoading ? (
         <div className={styles.accountModelsWarning} role="note">
           {t('accounts.model_rule_mapping_unavailable')}
+        </div>
+      ) : null}
+
+      {precedenceUnknown ? (
+        <div className={styles.accountModelsWarning} role="note">
+          {t('accounts.model_precedence_unknown', { count: projection.globalRules.length })}
+        </div>
+      ) : null}
+
+      {globalInheritanceChange && !sharedSourceReadOnly ? (
+        <div className={styles.accountModelsWarning} role="note">
+          {t(
+            globalInheritanceChange === 'stops'
+              ? 'accounts.model_change_stops_inheriting_global'
+              : 'accounts.model_change_resumes_inheriting_global',
+            { count: projection.globalRules.length }
+          )}
         </div>
       ) : null}
 
