@@ -525,6 +525,60 @@
   flex-shrink: 0;
 }
 
+.accountPinButton {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
+  border-radius: 999px;
+  background: var(--bg-primary);
+  color: var(--accounts-muted);
+  cursor: pointer;
+  transition:
+    opacity 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease;
+
+  &:hover,
+  &:focus-visible {
+    border-color: color-mix(in srgb, var(--primary-color) 42%, var(--border-color));
+    color: var(--primary-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+}
+
+.accountPinButtonActive {
+  border-color: color-mix(in srgb, var(--primary-color) 56%, var(--border-color));
+  color: var(--primary-color);
+}
+
+// Unpinned controls appear on hover/focus where hover exists; touch screens keep them visible.
+@media (hover: hover) {
+  .accountPinButton:not(.accountPinButtonActive) {
+    opacity: 0;
+  }
+
+  .accountCard:hover,
+  .accountGridCard:hover,
+  .accountCard:focus-within,
+  .accountGridCard:focus-within {
+    > .accountPinButton {
+      opacity: 1;
+    }
+  }
+}
+
 .accountGridCardHeaderRight {
   display: flex;
   align-items: center;
