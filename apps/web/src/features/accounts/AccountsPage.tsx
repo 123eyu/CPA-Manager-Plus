@@ -7791,7 +7791,7 @@ export function AccountsPage() {
         title={label}
         onClick={(event) => handleTogglePinnedRow(event, row)}
       >
-        <IconPin size={14} fill={pinned ? 'currentColor' : 'none'} />
+        <IconPin size={13} fill={pinned ? 'currentColor' : 'none'} />
       </button>
     );
   };
@@ -9196,7 +9196,6 @@ export function AccountsPage() {
                       : () => void openAccountDetail(row, 'overview')
                   }
                 >
-                  {renderPinButton(row)}
                   <div className={styles.accountGridCardHeader}>
                     <div className={styles.accountGridCardIdentity}>
                       {isSelectionMode ? (
@@ -9239,6 +9238,7 @@ export function AccountsPage() {
                               {getDisplayAccount(row)}
                             </strong>
                           </button>
+                          {renderPinButton(row)}
                           {copiedIdentityKey === `${row.selectionKey}:account` ? (
                             <span className={styles.accountIdentityCopyHint}>
                               {t('accounts.copy_feedback_copied')}
@@ -9709,7 +9709,6 @@ export function AccountsPage() {
                     .join(' ')}
                   onClick={isSelectionMode ? () => handleAccountCardClick(row) : undefined}
                 >
-                  {renderPinButton(row)}
                   <div className={styles.accountCardIdentity}>
                     <div className={styles.accountProviderLogo} aria-hidden="true">
                       {ctx.providerIcon ? (
@@ -9737,6 +9736,7 @@ export function AccountsPage() {
                             {getDisplayAccount(row)}
                           </strong>
                         </button>
+                        {renderPinButton(row)}
                         {copiedIdentityKey === `${row.selectionKey}:account` ? (
                           <span className={styles.accountIdentityCopyHint}>
                             {t('accounts.copy_feedback_copied')}
