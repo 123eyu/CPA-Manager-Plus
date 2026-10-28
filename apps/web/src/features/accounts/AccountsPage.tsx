@@ -36,6 +36,7 @@ import {
   IconMoreVertical,
   IconModelCluster,
   IconPlus,
+  IconPin,
   IconRefreshCw,
   IconRotateCcw,
   IconSearch,
@@ -277,6 +278,12 @@ import {
   resolveAccountRequestHealthEvidence,
   type AccountRequestEvidenceInput,
 } from '@/features/accounts/model/accountHealthEvidence';
+import {
+  applyAccountPinnedOrder,
+  readAccountPinnedKeys,
+  toggleAccountPinnedKey,
+  writeAccountPinnedKeys,
+} from '@/features/accounts/model/accountPinnedRows';
 import {
   DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE,
   readAccountsWorkspaceUiState,
@@ -1681,6 +1688,7 @@ export function AccountsPage() {
   const isCompactScreen = useMediaQuery('(max-width: 1024px)');
   const effectiveLayoutMode = isCompactScreen ? 'grid' : layoutMode;
   const [copiedIdentityKey, setCopiedIdentityKey] = useState<string | null>(null);
+  const [pinnedKeys, setPinnedKeys] = useState<string[]>(readAccountPinnedKeys);
   const detailEventsRequestIdRef = useRef(0);
   const detailEventsAutoLoadKeyRef = useRef<string | null>(null);
   const quotaCooldownRequestIdRef = useRef(0);
@@ -4435,13 +4443,17 @@ export function AccountsPage() {
         'accounts.recommend_reason_recovered'
       );
     });
-    return sortAccountRows(operationalRows, accountSort, requestEvidenceBySelectionKey);
+    return applyAccountPinnedOrder(
+      sortAccountRows(operationalRows, accountSort, requestEvidenceBySelectionKey),
+      pinnedKeys
+    );
   }, [
     accountSort,
     actionCandidatesByRowKey,
     baseFilteredRows,
     codexStatusBySelectionKey,
     effectiveOperationalFilter,
+    pinnedKeys,
     quotaCooldownsByRowKey,
     recommendationBySelectionKey,
     requestEvidenceBySelectionKey,
@@ -7730,6 +7742,43 @@ export function AccountsPage() {
     [showNotification, t]
   );
 
+  useEffect(() => {
+    writeAccountPinnedKeys(pinnedKeys);
+  }, [pinnedKeys]);
+
+  const handleTogglePinnedRow = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>, row: AccountRow) => {
+      event.stopPropagation();
+      const pinning = !pinnedKeys.includes(row.selectionKey);
+      setPinnedKeys((current) => toggleAccountPinnedKey(current, row.selectionKey));
+      if (pinning && currentPage > 1) {
+        showNotification(t('accounts.pin_moved_to_top'), 'success');
+      }
+    },
+    [currentPage, pinnedKeys, showNotification, t]
+  );
+
+  const renderPinButton = (row: AccountRow) => {
+    // Selection mode owns the card corner and card clicks; pins return when it ends.
+    if (isSelectionMode) return null;
+    const pinned = pinnedKeys.includes(row.selectionKey);
+    const label = t(pinned ? 'accounts.unpin_account' : 'accounts.pin_account', {
+      name: row.accountLabel,
+    });
+    return (
+      <button
+        type="button"
+        className={`${styles.accountPinButton} ${pinned ? styles.accountPinButtonActive : ''}`}
+        aria-pressed={pinned}
+        aria-label={label}
+        title={label}
+        onClick={(event) => handleTogglePinnedRow(event, row)}
+      >
+        <IconPin size={14} fill={pinned ? 'currentColor' : 'none'} />
+      </button>
+    );
+  };
+
   const openOauthExcludedEditor = useCallback(
     (provider?: string) => {
       const providerValue = (provider || (providerFilter !== 'all' ? providerFilter : '')).trim();
@@ -9130,6 +9179,7 @@ export function AccountsPage() {
                       : () => void openAccountDetail(row, 'overview')
                   }
                 >
+                  {renderPinButton(row)}
                   <div className={styles.accountGridCardHeader}>
                     <div className={styles.accountGridCardIdentity}>
                       {isSelectionMode ? (
@@ -9642,6 +9692,7 @@ export function AccountsPage() {
                     .join(' ')}
                   onClick={isSelectionMode ? () => handleAccountCardClick(row) : undefined}
                 >
+                  {renderPinButton(row)}
                   <div className={styles.accountCardIdentity}>
                     <div className={styles.accountProviderLogo} aria-hidden="true">
                       {ctx.providerIcon ? (
