@@ -1764,6 +1764,8 @@ export function AccountsPage() {
     ) => AuthFileItem[]
   >(() => []);
   const lastWorkspaceNavigationRef = useRef<string | null>(null);
+  // Searches this page wrote itself, in order, until the router reports them back.
+  const pendingWorkspaceSearchesRef = useRef<string[]>([]);
   const syncingWorkspaceLocationRef = useRef(false);
   const hasProcessedInitialWorkspaceLocationRef = useRef(false);
   const currentHashHistoryStateRef = useRef<unknown>(
@@ -5236,6 +5238,7 @@ export function AccountsPage() {
       setDetailTab(tab);
       if (searchValue !== location.search) {
         lastWorkspaceNavigationRef.current = searchValue;
+        pendingWorkspaceSearchesRef.current.push(searchValue);
         navigate({ pathname: location.pathname, search: searchValue }, { replace: true });
       }
     },
@@ -5263,6 +5266,7 @@ export function AccountsPage() {
       DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE
     );
     lastWorkspaceNavigationRef.current = searchValue;
+    pendingWorkspaceSearchesRef.current.push(searchValue);
     allowNextNavigation();
     navigate({ pathname: location.pathname, search: searchValue }, { replace: true });
   }, [allowNextNavigation, location.pathname, location.search, navigate, workspaceUrlState]);
@@ -5294,6 +5298,15 @@ export function AccountsPage() {
   );
 
   useEffect(() => {
+    const pendingSearches = pendingWorkspaceSearchesRef.current;
+    const echoIndex = pendingSearches.indexOf(location.search);
+    if (echoIndex >= 0) {
+      // A URL this page wrote from its own state. The state may already be newer
+      // (fast typing), so re-applying this older URL would drop the latest input.
+      pendingSearches.splice(0, echoIndex + 1);
+      return;
+    }
+    pendingSearches.length = 0;
     const fallback = hasProcessedInitialWorkspaceLocationRef.current
       ? DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE
       : initialWorkspaceUiState.current;
@@ -5322,6 +5335,7 @@ export function AccountsPage() {
     }
     if (lastWorkspaceNavigationRef.current === nextSearch) return;
     lastWorkspaceNavigationRef.current = nextSearch;
+    pendingWorkspaceSearchesRef.current.push(nextSearch);
     navigate({ pathname: location.pathname, search: nextSearch }, { replace: true });
   }, [location.pathname, location.search, navigate, workspaceUrlState]);
 
@@ -5412,6 +5426,7 @@ export function AccountsPage() {
         DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE
       );
       lastWorkspaceNavigationRef.current = searchValue;
+      pendingWorkspaceSearchesRef.current.push(searchValue);
       if (hadDirtyConfiguration) allowNextNavigation();
       navigate(
         {
@@ -5441,6 +5456,7 @@ export function AccountsPage() {
         DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE
       );
       lastWorkspaceNavigationRef.current = searchValue;
+      pendingWorkspaceSearchesRef.current.push(searchValue);
       navigate({ pathname: location.pathname, search: searchValue }, { replace: true });
     },
     [location.pathname, location.search, navigate, workspaceUrlState]
@@ -5596,6 +5612,7 @@ export function AccountsPage() {
         DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE
       );
       lastWorkspaceNavigationRef.current = searchValue;
+      pendingWorkspaceSearchesRef.current.push(searchValue);
       if (hadDirtyConfiguration) allowNextNavigation();
       navigate({ pathname: location.pathname, search: searchValue }, { replace: false });
     },
